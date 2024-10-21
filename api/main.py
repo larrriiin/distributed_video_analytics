@@ -1,52 +1,68 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from enum import Enum
 import asyncio
-from aiokafka import AIOKafkaProducer
+from .kafka_producer import KafkaProducer
 
-app = FastAPI(title="Distributed Video Analytics API")
+app = FastAPI()
 
-# Настройки Kafka
-KAFKA_BOOTSTRAP_SERVERS = 'localhost:9092'
-KAFKA_TOPIC = 'orchestrator_commands'
-
-# Инициализация Kafka-продьюсера
-loop = asyncio.get_event_loop()
-producer = AIOKafkaProducer(loop=loop, bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
+# Конфигурация Kafka
+KAFKA_SERVER = "localhost:9092"
+producer = KafkaProducer(kafka_server=KAFKA_SERVER)
 
 @app.on_event("startup")
 async def startup_event():
+    # Запуск продюсера при старте приложения
     await producer.start()
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    # Остановка продюсера при завершении работы приложения
     await producer.stop()
 
-# Модели Pydantic
-class ScenarioStatus(BaseModel): # для представления статуса сценария
-    id: int
-    status: str
+# Статусы для стейт-машины
+class State(str, Enum):
+    init_startup = "init_startup"
+    in_startup_processing = "in_startup_processing"
+    active = "active"
+    init_shutdown = "init_shutdown"
+    in_shutdown_processing = "in_shutdown_processing"
+    inactive = "inactive"
+
+# Модель для информации о сценарии
+class ScenarioInfo(BaseModel):
+    id: str
+    current_state: State
     parameters: dict
 
-class StateChangeCommand(BaseModel): # для приёма команд изменения состояния
-    id: int
-    command: str  # Например, 'start', 'stop'
+# Модель для тела запроса на изменение состояния
+class ChangeStateRequest(BaseModel):
+    new_state: State
 
-# Временное хранилище сценариев (для простоты)
-scenarios = {}
+# Храним состояние в памяти для упрощения
+scenarios = {
+    "1": ScenarioInfo(id="1", current_state=State.inactive, parameters={}),
+}
 
-@app.get("/scenario/{scenario_id}", response_model=ScenarioStatus) # возвращает информацию о сценарии
-async def get_scenario(scenario_id: int):
-    scenario = scenarios.get(scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=404, detail="Сценарий не найден")
-    return scenario
+# Эндпоинт для получения информации о сценарии по его ID
+@app.get("/scenario/{scenario_id}", response_model=ScenarioInfo)
+async def get_scenario(scenario_id: str):
+    if scenario_id in scenarios:
+        return scenarios[scenario_id]
+    raise HTTPException(status_code=404, detail="Scenario not found")
 
-@app.post("/scenario/{scenario_id}/state") # изменяет состояние сценария
-async def change_scenario_state(scenario_id: int, command: StateChangeCommand):
-    # Отправляем команду оркестратору через Kafka
-    await producer.send_and_wait(KAFKA_TOPIC, command.json().encode('utf-8'))
-    return {"message": "Команда отправлена"}
+# Эндпоинт для изменения состояния стейт-машины
+@app.post("/scenario/{scenario_id}/state")
+async def change_state(scenario_id: str, request: ChangeStateRequest):
+    if scenario_id in scenarios:
+        scenarios[scenario_id].current_state = request.new_state
 
-@app.get("/healthcheck") # проверка здоровья сервиса
-async def healthcheck():
-    return {"status": "ok"}
+        # Отправка команды в Kafka
+        command = {
+            "scenario_id": scenario_id,
+            "new_state": request.new_state.value
+        }
+        await producer.send_command(topic="orchestrator_commands", command=command)
+
+        return {"message": "State updated", "new_state": request.new_state}
+    raise HTTPException(status_code=404, detail="Scenario not found")
