@@ -45,8 +45,27 @@ async def inference(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Error decoding image")
 
         logger.info(f"Image successfully decoded. Shape: {image.shape}")
-        return {"status": "Image processed successfully"}
-    
+
+        # Запуск инференса
+        logger.info("Running inference on image")
+        results = model(image)  # Запуск инференса через YOLO
+
+        # Формирование ответа с результатами
+        detections = []
+        for result in results:
+            for box in result.boxes:
+                detection = {
+                    "class": int(box.cls),  # Класс объекта
+                    "confidence": float(box.conf),  # Уверенность предсказания
+                    "box": box.xyxy.tolist()  # Координаты ограничивающего прямоугольника
+                }
+                detections.append(detection)
+
+        logger.info(f"Inference successful, detections: {detections}")
+
+        # Возвращаем JSON с результатами
+        return {"detections": detections}
+
     except Exception as e:
         logger.error(f"Error during processing: {e}")
         raise HTTPException(status_code=500, detail=str(e))

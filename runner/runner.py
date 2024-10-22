@@ -64,11 +64,6 @@ class Runner:
             # Изменение размера кадра (например, 640x640)
             frame_resized = cv2.resize(frame_rgb, (640, 640))
 
-            # Сохранение кадра для отладки (по желанию)
-            frame_filename = f"debug_frame_{scenario_id}_{self.frame_count}.jpg"
-            cv2.imwrite(frame_filename, frame_resized)
-            logger.info(f"Saved frame: {frame_filename}")
-
             # Отправляем кадр на инференс сервис
             await self.send_frame_for_inference(frame_resized)
 
