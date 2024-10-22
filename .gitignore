@@ -163,3 +163,4 @@ cython_debug/
 yolov8m.pt
 yolov8n.pt
 videos/1.mp4
+videos/2.mp4

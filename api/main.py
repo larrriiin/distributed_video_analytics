@@ -66,3 +66,15 @@ async def change_state(scenario_id: str, request: ChangeStateRequest):
 
         return {"message": "State updated", "new_state": request.new_state}
     raise HTTPException(status_code=404, detail="Scenario not found")
+
+@app.get("/healthcheck")
+async def healthcheck():
+    # Проверка состояния Kafka продюсера
+    kafka_status = "healthy" if producer.is_connected() else "unhealthy"
+
+    # Если Kafka продюсер не подключен, вернем 500
+    if kafka_status != "healthy":
+        return {"status": "unhealthy", "kafka_status": kafka_status}, 500
+
+    # Если все проверки прошли успешно, вернем 200 OK
+    return {"status": "healthy", "kafka_status": kafka_status}, 200

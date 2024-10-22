@@ -13,6 +13,7 @@ class Runner:
         self.inference_url = inference_url  # URL для отправки кадра в инференс сервис
         self.running = False
         self.frame_count = 0
+        self.processing_task = None  # Асинхронная задача для видеообработки
 
         # Настройка loguru
         logger.add("runner_log.log", format="{time} {level} {message}", level="DEBUG", rotation="1 MB", compression="zip")
@@ -43,17 +44,25 @@ class Runner:
         if new_state == "active" and not self.running:
             logger.info(f"Starting processing for scenario {scenario_id}")
             self.running = True
-            await self.process_video(scenario_id)
+            # Запускаем обработку видео в фоновом режиме
+            self.processing_task = asyncio.create_task(self.process_video(scenario_id))
 
         elif new_state == "inactive" and self.running:
             logger.info(f"Stopping processing for scenario {scenario_id}")
             self.running = False
+            if self.processing_task:
+                await self.processing_task  # Дожидаемся завершения фоновой задачи
 
     async def process_video(self, scenario_id: str):
         video_path = f"videos/{scenario_id}.mp4"  # Путь к видеофайлу
         cap = cv2.VideoCapture(video_path)
 
-        while self.running and cap.isOpened():
+        while cap.isOpened():
+            # Проверяем состояние каждую итерацию
+            if not self.running:
+                logger.info(f"Processing stopped for scenario {scenario_id}")
+                break
+
             ret, frame = cap.read()
             if not ret:
                 break
@@ -85,7 +94,7 @@ class Runner:
                 async with session.post(self.inference_url, data=data) as response:
                     if response.content_type == "application/json":
                         result = await response.json()
-                        logger.info(f"Inference result: {result}")
+                        logger.debug(f"Inference result: {result['detections'][0]}")
                     else:
                         text = await response.text()
                         logger.error(f"Error from inference service: {text}")

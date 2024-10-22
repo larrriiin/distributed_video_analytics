@@ -13,15 +13,26 @@ logger.info("Logger initialized")  # Лог сразу после инициал
 # FastAPI приложение
 app = FastAPI()
 
+model_ready = False
+
 # Загружаем модель YOLOv8 и переключаем на CPU
 try:
     model = YOLO("yolov8m.pt")
     device = 'cpu'  # Явно указываем, что используется CPU
     model.to(device)
     logger.info(f"Model loaded successfully on device: {device}")
+    model_ready = True
 except Exception as e:
     logger.error(f"Error loading model: {e}")
     raise RuntimeError(f"Error loading YOLO model: {e}")
+
+@app.get("/healthcheck")
+async def healthcheck():
+    # Если модель не готова, возвращаем 500
+    if not model_ready:
+        return {"status": "unhealthy", "model_status": "not ready"}, 500
+
+    return {"status": "healthy", "model_status": "ready"}, 200
 
 @app.post("/inference")
 async def inference(file: UploadFile = File(...)):

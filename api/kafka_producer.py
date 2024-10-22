@@ -21,6 +21,10 @@ class KafkaProducer:
         if self.producer is not None:
             await self.producer.stop()
 
+    def is_connected(self):
+        # Проверяем, что продюсер существует и не закрыт
+        return self.producer is not None and not self.producer._closed
+
 # Пример использования
 async def example():
     producer = KafkaProducer(kafka_server="localhost:9092")
