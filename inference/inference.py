@@ -5,17 +5,14 @@ import cv2
 import numpy as np
 from loguru import logger
 
-# Настройка loguru должна быть первой
 logger.add("inference_log.log", format="{time} {level} {message}", level="DEBUG", rotation="1 MB", compression="zip")
 
 logger.info("Logger initialized")  # Лог сразу после инициализации
 
-# FastAPI приложение
 app = FastAPI()
 
 model_ready = False
 
-# Загружаем модель YOLOv8 и переключаем на CPU
 try:
     model = YOLO("yolov8m.pt")
     device = 'cpu'  # Явно указываем, что используется CPU
@@ -37,8 +34,6 @@ async def healthcheck():
 @app.post("/inference")
 async def inference(file: UploadFile = File(...)):
     try:
-        logger.info(f"Received file: {file.filename}")
-        # Чтение файла изображения
         image_data = await file.read()
 
         if not image_data:
@@ -47,9 +42,7 @@ async def inference(file: UploadFile = File(...)):
 
         # Преобразуем байты в массив numpy
         nparr = np.frombuffer(image_data, np.uint8)
-        logger.info(f"File size: {len(nparr)} bytes")
 
-        # Пробуем декодировать изображение
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if image is None:
             logger.error("Error decoding image")
@@ -57,11 +50,9 @@ async def inference(file: UploadFile = File(...)):
 
         logger.info(f"Image successfully decoded. Shape: {image.shape}")
 
-        # Запуск инференса
         logger.info("Running inference on image")
-        results = model(image)  # Запуск инференса через YOLO
+        results = model(image)
 
-        # Формирование ответа с результатами
         detections = []
         for result in results:
             for box in result.boxes:
@@ -72,7 +63,7 @@ async def inference(file: UploadFile = File(...)):
                 }
                 detections.append(detection)
 
-        logger.info(f"Inference successful, detections: {detections}")
+        logger.info(f"Inference successful!")
 
         # Возвращаем JSON с результатами
         return {"detections": detections}
@@ -81,10 +72,8 @@ async def inference(file: UploadFile = File(...)):
         logger.error(f"Error during processing: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Лог запуска приложения
 logger.info("Starting inference service...")
 
-# Пример использования
 if __name__ == "__main__":
     logger.info("Starting uvicorn server...")
     import uvicorn

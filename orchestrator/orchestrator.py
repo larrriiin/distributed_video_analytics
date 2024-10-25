@@ -38,7 +38,6 @@ class Orchestrator:
         new_state = command.get("new_state")
 
         if new_state == "active":
-            # Если текущее состояние - inactive, инициируем автоматический запуск
             if self.state_machine.get_current_state() == State.inactive:
                 await self.automatic_transition(scenario_id, [
                     State.init_startup,
@@ -47,7 +46,6 @@ class Orchestrator:
                 ])
 
         elif new_state == "inactive":
-            # Если текущее состояние - active, инициируем автоматическую остановку
             if self.state_machine.get_current_state() == State.active:
                 await self.automatic_transition(scenario_id, [
                     State.init_shutdown,
@@ -63,8 +61,8 @@ class Orchestrator:
                 await self.send_to_kafka(command)
                 logger.info(f"Transitioned to {state}")
 
-                # Ждём 2 секунды между переходами (можно настроить задержку)
-                await asyncio.sleep(2)
+                # Ждём секунду мужду переходами
+                await asyncio.sleep(1)
             else:
                 logger.warning(f"Invalid transition from {self.state_machine.get_current_state()} to {state}")
                 break
@@ -74,7 +72,6 @@ class Orchestrator:
         await self.producer.send_and_wait("runner_commands", message)
         logger.info(f"Command sent to Kafka: {command}")
 
-# Пример использования
 async def main():
     logger.info('Orchestrator is started...')
     orchestrator = Orchestrator(kafka_server="localhost:9092", topic="orchestrator_commands")

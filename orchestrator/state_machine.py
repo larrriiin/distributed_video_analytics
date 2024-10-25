@@ -13,7 +13,6 @@ class StateMachine:
         self.current_state = State.inactive
 
     def transition(self, new_state: State):
-        # Определяем допустимые переходы между состояниями
         transitions = {
             State.inactive: [State.init_startup],
             State.init_startup: [State.in_startup_processing],

@@ -3,22 +3,24 @@ from pydantic import BaseModel
 from enum import Enum
 import asyncio
 from .kafka_producer import KafkaProducer
-
-app = FastAPI()
+from contextlib import asynccontextmanager
 
 # Конфигурация Kafka
 KAFKA_SERVER = "localhost:9092"
 producer = KafkaProducer(kafka_server=KAFKA_SERVER)
 
-@app.on_event("startup")
-async def startup_event():
-    # Запуск продюсера при старте приложения
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Действия при запуске приложения
     await producer.start()
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    # Остановка продюсера при завершении работы приложения
+    # Передача управления приложению
+    yield
+
+    # Действия при завершении работы приложения
     await producer.stop()
+
+app = FastAPI(lifespan=lifespan)
 
 # Статусы для стейт-машины
 class State(str, Enum):
@@ -42,6 +44,7 @@ class ChangeStateRequest(BaseModel):
 # Храним состояние в памяти для упрощения
 scenarios = {
     "1": ScenarioInfo(id="1", current_state=State.inactive, parameters={}),
+    "2": ScenarioInfo(id="2", current_state=State.inactive, parameters={}),
 }
 
 # Эндпоинт для получения информации о сценарии по его ID
