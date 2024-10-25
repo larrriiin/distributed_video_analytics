@@ -7,7 +7,7 @@ commands = [
     ["uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "8000"],  # API
     ["python", "orchestrator/orchestrator.py"],                            # Orchestrator
     ["python", "runner/runner.py"],                                        # Runner
-    ["uvicorn", "inference.inference:app", "--host", "127.0.0.1", "--port", "8001"],  # Inference
+    ["python", "inference/inference.py"],  # Inference
 ]
 
 # Список процессов
