@@ -1,24 +1,30 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from enum import Enum
-import asyncio
+from typing import Dict, List, Any
+import asyncpg
 from .kafka_producer import KafkaProducer
 from contextlib import asynccontextmanager
+import json
 
 # Конфигурация Kafka
 KAFKA_SERVER = "localhost:9092"
+DB_CONFIG = {
+    "user": "root",
+    "password": "Root1Root1",
+    "database": "vidan_main",
+    "host": "localhost"
+}
+
 producer = KafkaProducer(kafka_server=KAFKA_SERVER)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Действия при запуске приложения
     await producer.start()
-
-    # Передача управления приложению
+    app.state.db_pool = await asyncpg.create_pool(**DB_CONFIG)
     yield
-
-    # Действия при завершении работы приложения
     await producer.stop()
+    await app.state.db_pool.close()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -40,6 +46,16 @@ class ScenarioInfo(BaseModel):
 # Модель для тела запроса на изменение состояния
 class ChangeStateRequest(BaseModel):
     new_state: State
+
+# Модель для хранения результата инференса
+class Detection(BaseModel):
+    class_id: int
+    confidence: float
+    box: List[List[float]]  # координаты боксов
+
+class InferenceResult(BaseModel):
+    frame_number: int
+    detections: List[Detection]  # список детекций
 
 # Храним состояние в памяти для упрощения
 scenarios = {
@@ -69,6 +85,34 @@ async def change_state(scenario_id: str, request: ChangeStateRequest):
 
         return {"message": "State updated", "new_state": request.new_state}
     raise HTTPException(status_code=404, detail="Scenario not found")
+
+@app.get("/scenario/{scenario_id}/results", response_model=List[InferenceResult])
+async def get_inference_results(scenario_id: str):
+    query = """
+    SELECT frame_number, detections
+    FROM inference_results
+    WHERE scenario_id = $1
+    ORDER BY frame_number ASC
+    """
+    async with app.state.db_pool.acquire() as connection:
+        results = await connection.fetch(query, scenario_id)
+    
+    if not results:
+        raise HTTPException(status_code=404, detail="No results found for this scenario")
+    
+    # Преобразуем `detections` из строки в список объектов, если необходимо
+    formatted_results = []
+    for record in results:
+        # Если `detections` хранится как строка JSON, преобразуем его в список
+        detections = json.loads(record["detections"]) if isinstance(record["detections"], str) else record["detections"]
+        formatted_results.append({
+            "frame_number": record["frame_number"],
+            "detections": [
+                Detection(class_id=d["class"], confidence=d["confidence"], box=d["box"]) for d in detections
+            ]
+        })
+    
+    return formatted_results
 
 @app.get("/healthcheck")
 async def healthcheck():
